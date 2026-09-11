@@ -12,7 +12,7 @@ yts "https://youtu.be/dQw4w9WgXcQ"       # print the transcript
 ## Install
 
 ```bash
-npm install -g ytscript
+npm install -g @rashed.parvez/ytscript
 ```
 
 You need Node 20 or newer. There is one runtime dependency, `effect`. The app

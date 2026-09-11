@@ -1,5 +1,5 @@
 {
-  "name": "ytscript",
+  "name": "@rashed.parvez/ytscript",
   "version": "0.2.0",
   "description": "Fetch YouTube transcripts from the terminal. No login, no API key, no subscription.",
   "type": "module",
@@ -26,6 +26,9 @@
     "effect"
   ],
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "author": "rashed <parvez08eee@gmail.com>",
   "repository": {
     "type": "git",
