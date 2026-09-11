@@ -90,7 +90,12 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     fg
   } = tui
 
+  // The terminal supplies body text colour, so the app is legible on a light
+  // theme too. parseColor("default") is not a thing; this sentinel is.
+  const TEXT = tui.RGBA.defaultForeground()
+
   const inKey = fg(THEME.key)
+  const inText = fg(TEXT)
   const inDim = fg(THEME.dim)
   const inGreen = fg(THEME.green)
 
@@ -100,17 +105,14 @@ export const launch = async (initialUrl?: string): Promise<void> => {
    * cell so stacked rows line up into columns.
    */
   const pair = (keyName: string, label: string, width = 0): Array<TextChunk> => {
-    const body = ` ${label}`
-    const gap = Math.max(1, width - keyName.length - body.length)
-    return [inKey(keyName), inDim(body + " ".repeat(gap))]
+    const gap = Math.max(1, width - keyName.length - label.length - 1)
+    // The label is ordinary text, not secondary. Dimming it as well as the
+    // key made whole menus read as disabled.
+    return [inKey(keyName), inText(` ${label}`), inDim(" ".repeat(gap))]
   }
 
   const styled = (...chunks: Array<TextChunk>): StyledTextType =>
     new StyledText(chunks)
-
-  // The terminal supplies body text colour, so the app is legible on a light
-  // theme too. parseColor("default") is not a thing; this sentinel is.
-  const TEXT = tui.RGBA.defaultForeground()
 
   const renderer: CliRenderer = await createCliRenderer({
     exitOnCtrlC: true,
@@ -118,8 +120,35 @@ export const launch = async (initialUrl?: string): Promise<void> => {
   })
   const ctx = renderer
 
+  // stop() only pauses the render loop. destroy() is what puts the terminal
+  // back: alt screen off, mouse tracking off, cursor visible. Without it the
+  // shell is left echoing raw mouse reports and the pane has to be closed.
+  let tornDown = false
+  const teardown = (): void => {
+    if (tornDown) return
+    tornDown = true
+    try {
+      renderer.destroy()
+    } catch {
+      // Best effort: a half-initialised renderer must not mask the real exit.
+    }
+  }
+
+  process.on("exit", teardown)
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    process.on(signal, () => {
+      teardown()
+      process.exit(0)
+    })
+  }
+  process.on("uncaughtException", (error) => {
+    teardown()
+    process.stderr.write(`${error.stack ?? error.message}\n`)
+    process.exit(1)
+  })
+
   const quit = (): never => {
-    renderer.stop()
+    teardown()
     process.exit(0)
   }
 
@@ -169,7 +198,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     borderStyle: "rounded",
     borderColor: THEME.green,
     title: " paste a youtube url ",
-    titleColor: THEME.dim,
+    titleColor: THEME.green,
     paddingLeft: 1,
     paddingRight: 1
   })
@@ -354,7 +383,9 @@ export const launch = async (initialUrl?: string): Promise<void> => {
               inDim("  "),
               ...pair("y", "copy answer"),
               inDim("  "),
-              ...pair("esc", "close")
+              ...pair("esc", "close"),
+              inDim("  "),
+              ...pair("q", "quit")
             ]
       default:
         return [
@@ -383,7 +414,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
   const paintPanel = (): void => {
     const active = tool()
     panel.title = active === null ? " ask ai " : ` ask ai · ${active.label} `
-    panel.titleColor = THEME.dim
+    panel.titleColor = THEME.green
 
     if (active === null) {
       panelMenu.content = ""
@@ -629,6 +660,9 @@ export const launch = async (initialUrl?: string): Promise<void> => {
       }
 
       switch (name) {
+        case "q":
+          quit()
+          break
         case "i":
           question = ""
           show("askInput")

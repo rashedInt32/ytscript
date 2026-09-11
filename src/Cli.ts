@@ -1,5 +1,7 @@
 import { spawn, spawnSync } from "node:child_process"
+import { accessSync, constants } from "node:fs"
 import { createRequire } from "node:module"
+import { delimiter, join } from "node:path"
 import { writeFile } from "node:fs/promises"
 import { parseArgs } from "node:util"
 import * as Effect from "effect/Effect"
@@ -76,6 +78,29 @@ const OPTIONS = {
 
 class UsageError extends Error {}
 
+/** First executable of that name on PATH, or null. */
+const findOnPath = (name: string): string | null => {
+  const home = process.env["HOME"] ?? ""
+  const searchPath = process.env["PATH"] ?? ""
+  const dirs = [
+    ...searchPath.split(delimiter),
+    join(home, ".bun/bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin"
+  ]
+  for (const dir of dirs) {
+    if (dir === "") continue
+    const full = join(dir, name)
+    try {
+      accessSync(full, constants.X_OK)
+      return full
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
 const copyToClipboard = (text: string): Promise<void> => {
   const candidates: ReadonlyArray<readonly [string, ReadonlyArray<string>]> =
     process.platform === "darwin"
@@ -117,9 +142,10 @@ const copyToClipboard = (text: string): Promise<void> => {
  */
 const launchApp = async (url: string | undefined): Promise<number> => {
   if (process.versions.bun === undefined) {
-    const bun = spawnSync("command", ["-v", "bun"], { shell: true, encoding: "utf8" })
-    const bunPath = bun.stdout?.trim()
-    if (bunPath === undefined || bunPath === "") {
+    // Resolved by hand rather than through a shell: `shell: true` triggers
+    // Node's DEP0190 warning, which prints straight into the rendered UI.
+    const bunPath = findOnPath("bun")
+    if (bunPath === null) {
       process.stderr.write(
         "The interactive app needs Bun, because OpenTUI's renderer binds native\n" +
           "code through bun:ffi and has no Node equivalent yet.\n\n" +
