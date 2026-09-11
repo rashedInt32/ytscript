@@ -135,6 +135,63 @@ describe("ask", () => {
     expect(explainAsk(result.failure)).toContain("nope")
   })
 
+  test("never echoes the question back in an error", async () => {
+    // The spawner formats its errors with the whole argv, and for a streaming
+    // tool that argv holds the question. The panel must not repeat it.
+    const secret = "zzsecretquestionzz"
+    const cases: ReadonlyArray<AiTool> = [
+      { id: "a", label: "a", bin: "/nonexistent/gone", args: (q) => [q] },
+      shellTool(() => "exit 3")
+    ]
+
+    for (const tool of cases) {
+      const chunks: Array<string> = []
+      const result = await runtime.runPromise(
+        Effect.result(
+          ask({ tool, question: secret, transcript: "t", onChunk: (c) => chunks.push(c) })
+        )
+      )
+      if (result._tag !== "Failure") throw new Error("expected a failure")
+      expect(explainAsk(result.failure)).not.toContain(secret)
+    }
+  })
+
+  test("a tool killed from outside is reported as stopped, not as unstartable", async () => {
+    // Only reachable for an external kill. The app's own escape interrupts the
+    // fiber, which aborts in the stream and never reads the exit code.
+    const pidFile = join(tmpdir(), `ytt-kill-${process.pid}-${Date.now()}`)
+    const chunks: Array<string> = []
+    const running = runtime.runPromise(
+      Effect.result(
+        ask({
+          tool: shellTool(() => `echo $$ > ${pidFile}; printf 'partial'; exec sleep 30`),
+          question: "zzsecretquestionzz",
+          transcript: "t",
+          onChunk: (c) => chunks.push(c)
+        })
+      )
+    )
+
+    let pid = 0
+    const started = Date.now()
+    while (pid === 0 && Date.now() - started < 5_000) {
+      await Bun.sleep(25)
+      const text = await Bun.file(pidFile).text().catch(() => "")
+      pid = Number.parseInt(text.trim(), 10) || 0
+    }
+    expect(pid).toBeGreaterThan(0)
+    process.kill(pid, "SIGTERM")
+
+    const result = await running
+    expect(result._tag).toBe("Failure")
+    if (result._tag !== "Failure") return
+    expect(result.failure).toMatchObject({ _tag: "ToolKilled" })
+    // The words already streamed stay, and the question stays out.
+    expect(chunks.join("")).toBe("partial")
+    expect(explainAsk(result.failure)).not.toContain("zzsecretquestionzz")
+    await rm(pidFile, { force: true })
+  })
+
   describe("streaming mode", () => {
     const ndjson = [
       { type: "system", subtype: "init" },

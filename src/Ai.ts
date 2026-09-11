@@ -21,6 +21,7 @@ import * as Fiber from "effect/Fiber"
 import * as FileSystem from "effect/FileSystem"
 import * as Filter from "effect/Filter"
 import * as Path from "effect/Path"
+import type * as PlatformError from "effect/PlatformError"
 import * as Result from "effect/Result"
 import * as Stream from "effect/Stream"
 import * as ChildProcess from "effect/unstable/process/ChildProcess"
@@ -190,10 +191,15 @@ export const PRESETS: ReadonlyArray<Preset> = [
   }
 ]
 
-/** The tool could not be started, or died before it could answer. */
+/** The tool could not be started at all. */
 export class ToolUnavailable extends Data.TaggedError("ToolUnavailable")<{
   readonly tool: string
-  readonly cause: unknown
+  readonly reason: string
+}> {}
+
+/** Something outside the app killed the tool before it finished. */
+export class ToolKilled extends Data.TaggedError("ToolKilled")<{
+  readonly tool: string
 }> {}
 
 /** The tool ran and exited non-zero. */
@@ -203,13 +209,24 @@ export class ToolFailed extends Data.TaggedError("ToolFailed")<{
   readonly stderr: string
 }> {}
 
-export type AskError = ToolUnavailable | ToolFailed
+export type AskError = ToolUnavailable | ToolKilled | ToolFailed
+
+/**
+ * Why the spawner said no, in two words.
+ *
+ * Only the tag. A PlatformError formats itself with the whole argv, and for a
+ * streaming tool that argv holds the question the user just typed. None of it
+ * belongs in a forty-column panel.
+ */
+const reasonOf = (error: PlatformError.PlatformError): string => error.reason._tag
 
 /** A sentence to put in the panel. Mirrors `explain` in Youtube.ts. */
 export const explainAsk = (error: AskError): string => {
   switch (error._tag) {
     case "ToolUnavailable":
-      return `Could not run ${error.tool}: ${String(error.cause)}`
+      return `Could not start ${error.tool} (${error.reason}).`
+    case "ToolKilled":
+      return `${error.tool} was stopped before it finished.`
     case "ToolFailed": {
       const detail = error.stderr.trim().split("\n").slice(-3).join("\n")
       return detail === ""
@@ -280,7 +297,10 @@ export const ask = (
       Effect.sync(() => options.onChunk(chunk))
     )
 
-    const code = yield* handle.exitCode
+    // exitCode only fails when the child died by a signal, which the app's own
+    // cancel never reaches: interrupting aborts inside the stream above.
+    const code = yield* Effect.catch(handle.exitCode, () => Effect.succeed(null))
+    if (code === null) return yield* new ToolKilled({ tool: options.tool.label })
     if (code === 0) return
     return yield* new ToolFailed({
       tool: options.tool.label,
@@ -289,9 +309,7 @@ export const ask = (
     })
   }).pipe(
     Effect.scoped,
-    Effect.mapError((error) =>
-      error instanceof ToolFailed
-        ? error
-        : new ToolUnavailable({ tool: options.tool.label, cause: error })
+    Effect.catchTag("PlatformError", (error) =>
+      new ToolUnavailable({ tool: options.tool.label, reason: reasonOf(error) })
     )
   )
