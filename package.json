@@ -26,7 +26,15 @@
     "effect"
   ],
   "license": "MIT",
-  "author": "rashed",
+  "author": "rashed <parvez08eee@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rashedInt32/ytscript.git"
+  },
+  "homepage": "https://github.com/rashedInt32/ytscript#readme",
+  "bugs": {
+    "url": "https://github.com/rashedInt32/ytscript/issues"
+  },
   "dependencies": {
     "effect": "4.0.0-rc.113"
   },
@@ -35,6 +43,7 @@
     "@opentui/core": "^0.5.11"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.2",
     "@types/bun": "latest",
     "@types/node": "^22",
     "typescript": "^5"
@@ -44,6 +53,9 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "dev": "bun run src/bin.ts",
+    "changeset": "changeset",
+    "version:packages": "changeset version",
+    "release": "changeset publish",
     "prepublishOnly": "bun run typecheck && bun test && bun run build"
   }
 }
