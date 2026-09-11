@@ -15,9 +15,9 @@ ytt "https://youtu.be/dQw4w9WgXcQ"       # print the transcript
 npm install -g yt-transcript
 ```
 
-Needs Node 20 or newer. One runtime dependency, `effect`. The app pulls two
-more, `@opentui/core` and `@effect/platform-bun`, and both are optional: the
-plain output path never loads them.
+You need Node 20 or newer. There is one runtime dependency, `effect`. The app
+adds two more, `@opentui/core` and `@effect/platform-bun`, and both are
+optional, so the plain output path never loads them.
 
 Two commands are installed: `yt-transcript` and the shorter `ytt`.
 
@@ -76,7 +76,7 @@ In the reader: `/` searches, `y` copies what is on screen, `t` toggles timestamp
 ytt demo
 ```
 
-`demo` returns a built-in sample transcript. Every part of the tool works on it — formats, search, the reader, the ask-ai panel — with no request to YouTube. Useful when you are rate limited, offline, or changing the app itself. It also works inside the app: type `demo` into the URL field.
+`demo` returns a built-in sample transcript. Everything works on it without a single request to YouTube. Formats, search, the reader, the ask-ai panel, all of it. Handy when you are rate limited, offline, or changing the app itself. It works inside the app too, so you can type `demo` into the URL field.
 
 ## Ask AI
 
@@ -103,7 +103,7 @@ No API keys are stored or asked for. The tool runs the CLI exactly as you have a
 
 Four presets are one keypress each: `s` summarise, `k` key points, `a` action items, `c` chapters with timestamps. Press `i` to type any question instead.
 
-`o` toggles scope. By default the whole transcript is sent; with scope set to `screen`, only the paragraphs matching your current `/` search go to the model. That is cheaper and keeps the answer focused. The panel always shows the token count before you send.
+`o` toggles scope. By default you send the whole transcript. Switch it to `screen` and only the paragraphs matching your current `/` search go to the model, which costs less and keeps the answer focused. Either way the panel shows you the token count before anything is sent.
 
 `y` copies the answer.
 

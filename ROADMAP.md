@@ -48,7 +48,7 @@ a split install base.
 - [ ] Add a `prepublishOnly` script running typecheck, tests, and build
 - [ ] Verify the tarball with `npm pack --dry-run`
 - [ ] Publish, then verify `bunx <name> demo` works on a clean machine
-- [ ] Add a LICENSE file (package.json says MIT; the file is missing)
+- [x] Add a LICENSE file (package.json says MIT; the file is missing)
 
 ### Known packaging constraints
 
