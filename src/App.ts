@@ -737,7 +737,8 @@ export const launch = async (initialUrl?: string): Promise<void> => {
       case "tab":
         if (panelOpen) show("ask")
         break
-      case "slash":
+      // OpenTUI reports this key as "/", not "slash".
+      case "/":
         query = ""
         show("search")
         break
