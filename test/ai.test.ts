@@ -105,6 +105,19 @@ describe("ask", () => {
     expect(text.trim().length).toBe(big.length)
   })
 
+  test("survives a tool that never reads the transcript", async () => {
+    // Half a megabyte with nothing draining the pipe, so the write cannot
+    // finish before the tool exits. The EPIPE that follows means the tool got
+    // what it needed, not that the run failed. Linux raises it, macOS does not,
+    // so this only ever fails in CI.
+    const { text, result } = await collect(
+      shellTool(() => "printf 'done'"),
+      "x".repeat(500_000)
+    )
+    expect(result._tag).toBe("Success")
+    expect(text).toBe("done")
+  })
+
   test("keeps stderr out of the answer when the tool succeeds", async () => {
     // These CLIs draw progress spinners on stderr. None of it may reach the panel.
     const { text } = await collect(

@@ -273,9 +273,9 @@ export const ask = (
         : streaming.args(options.question)
 
     const command = ChildProcess.make(options.tool.bin, [...argv], {
-      // Closing stdin is what tells the tool to start work. A long transcript
-      // can outrun the pipe buffer, and the stream handles that back-pressure.
-      stdin: { stream: Stream.make(encoder.encode(`${options.transcript}\n`)) },
+      // Written below rather than handed over as a Stream, so the write error
+      // is ours to ignore.
+      stdin: "pipe",
       // extendEnv defaults to false, and these CLIs need PATH and whatever
       // credential variables their own login wrote.
       env: { NO_COLOR: "1", TERM: "dumb" },
@@ -283,6 +283,18 @@ export const ask = (
     })
 
     const handle = yield* spawner.spawn(command)
+
+    // A tool that has read enough closes stdin early, and the rest of the
+    // write then fails with EPIPE. That is success, not failure: it got what
+    // it needed. Linux raises it where macOS quietly drops it, so ignoring it
+    // has to be explicit. Closing stdin is also what tells the tool to begin,
+    // which the sink does once the transcript runs out.
+    yield* Effect.forkChild(
+      Effect.ignore(
+        Stream.run(Stream.make(encoder.encode(`${options.transcript}\n`)), handle.stdin)
+      )
+    )
+
     const stderr = yield* Effect.forkChild(
       Stream.mkString(Stream.decodeText(handle.stderr))
     )
