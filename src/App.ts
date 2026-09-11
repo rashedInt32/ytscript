@@ -789,6 +789,9 @@ export const launch = async (initialUrl?: string): Promise<void> => {
         break
       case "escape":
         setPanelOpen(false)
+        // The hint says "new url", so start empty. The failure path in `load`
+        // deliberately keeps the old one, because there you want to retry it.
+        urlInput.value = ""
         show("home")
         break
       case "a":
