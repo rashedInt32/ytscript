@@ -1,5 +1,13 @@
 # @rashed.parvez/ytscript
 
+## 0.2.1
+
+### Patch Changes
+
+- 5a73a6e: Pressing escape in the reader now clears the URL field, so a new URL can be
+  typed straight away instead of deleting the old one first. A fetch that failed
+  still keeps its URL, because that one you want to retry rather than retype.
+
 ## 0.2.0
 
 ### Minor Changes

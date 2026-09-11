@@ -1,6 +1,6 @@
 {
   "name": "@rashed.parvez/ytscript",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Fetch YouTube transcripts from the terminal. No login, no API key, no subscription.",
   "type": "module",
   "bin": {
