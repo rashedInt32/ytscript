@@ -29,28 +29,30 @@ import type {
  *
  * Colours carry meaning rather than decoration, so a hint bar can be read at
  * a glance: leaving is red, copying is green, moving is blue, settings are
- * orange, and anything to do with the AI is violet.
+ * orange, and anything to do with the AI is teal.
  *
- * Every value clears 3:1 contrast against white, black, #0d1117, solarized
- * light, and #f5f5f5. That band is what keeps a colour legible whichever
- * theme the user runs, and it is why these are mid-tones rather than the
- * brighter versions that only work on a dark background.
+ * The hues come from Tokyo Night, to match the claude-hl package. Its actual
+ * values could not be used as-is: they are tuned for a #1a1b26 background and
+ * score 1.5:1 to 2.8:1 against white, which is illegible. Each hue was kept
+ * and its lightness moved until the colour clears 3:1 against white, black,
+ * #0d1117, solarized light, and #f5f5f5. Every value here sits at about
+ * 4.15:1 on all five.
  */
 const THEME = {
-  /** Identity: wordmark, panel edge, AI prompts. */
-  brand: "#8b5cf6",
-  /** Timestamps. Structural, so it should not compete with the words. */
-  time: "#0f766e",
+  /** Identity: wordmark, panel edge, anything AI. */
+  brand: "#2c8376",
+  /** Timestamps. */
+  time: "#0f7cbb",
   /** Moving around: search, focus. */
-  nav: "#0284c7",
+  nav: "#3a70e3",
   /** Something was taken or confirmed: copy, enter. */
-  ok: "#059669",
+  ok: "#5c8133",
   /** Leaving or stopping, and anything that failed. */
-  danger: "#e11d48",
+  danger: "#e1294c",
   /** Changing a setting: toggles and pickers. */
-  option: "#c2410c",
+  option: "#c55410",
   /** Padding, secondary text, box edges. */
-  dim: "#64748b"
+  dim: "#6e7499"
 } as const
 
 /**
@@ -92,6 +94,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     ScrollBoxRenderable: ScrollBox,
     TextRenderable: Text,
     StyledText,
+    bold,
     createCliRenderer,
     fg
   } = tui
@@ -125,7 +128,9 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     width = 0
   ): Array<TextChunk> => {
     const gap = Math.max(1, width - keyName.length - label.length - 1)
-    return [paint(keyName), inText(` ${label}`), inDim(" ".repeat(gap))]
+    // Bold as well as coloured: on a single character, colour alone is a weak
+    // signal, and it is the only signal for anyone who cannot separate hues.
+    return [bold(paint(keyName)), inText(` ${label}`), inDim(" ".repeat(gap))]
   }
 
   const styled = (...chunks: Array<TextChunk>): StyledTextType =>
