@@ -1,0 +1,45 @@
+{
+  "name": "yt-transcript",
+  "version": "0.1.0",
+  "description": "Fetch YouTube transcripts from the terminal. No login, no API key, no subscription.",
+  "type": "module",
+  "bin": {
+    "yt-transcript": "dist/bin.js",
+    "ytt": "dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "youtube",
+    "transcript",
+    "subtitles",
+    "captions",
+    "cli",
+    "llm",
+    "ai",
+    "effect"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "effect": "4.0.0-rc.113"
+  },
+  "optionalDependencies": {
+    "@opentui/core": "^0.5.11"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22",
+    "typescript": "^5"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "dev": "bun run src/bin.ts"
+  }
+}
