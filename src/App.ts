@@ -5,11 +5,14 @@
  * loads this module at all, so the fast path pays nothing for it.
  *
  * Screens: a home screen with a URL field, and a reader for the transcript.
+ * The reader can slide an "ask ai" panel in from the right, which drives
+ * whichever AI CLI the user already has installed.
  */
 import { spawn } from "node:child_process"
 import * as Effect from "effect/Effect"
 import { estimateTokens, formatTimestamp, toParagraphs, wrap } from "./Format.ts"
 import { explain, getTranscript, parseVideoId, type Transcript } from "./Youtube.ts"
+import { ask, detectTools, PRESETS, type AiTool, type AskHandle } from "./Ai.ts"
 import { isDemoTarget } from "./Demo.ts"
 import type {
   BoxRenderable,
@@ -43,6 +46,14 @@ const THEME = {
   /** Errors, and nothing else. */
   bad: "#c92a2a"
 } as const
+
+/**
+ * Wide enough for prose, narrow enough to leave the transcript readable.
+ * A fixed 46 would squeeze the transcript to nothing on a small terminal,
+ * so never take more than 45% of the window.
+ */
+const panelWidth = (terminalWidth: number): number =>
+  Math.max(28, Math.min(46, Math.floor(terminalWidth * 0.45)))
 
 const copyToClipboard = (text: string): void => {
   const [command, args] =
@@ -229,6 +240,39 @@ export const launch = async (initialUrl?: string): Promise<void> => {
   readerMain.add(scroll)
   reader.add(readerMain)
 
+  // ------------------------------------------------------------- ai panel
+
+  const tools = detectTools()
+  let toolIndex = 0
+  const tool = (): AiTool | null => tools[toolIndex] ?? null
+
+  const PANEL_WIDTH = panelWidth(renderer.terminalWidth)
+
+  const panel = new Box(ctx, {
+    width: PANEL_WIDTH,
+    flexShrink: 0,
+    flexDirection: "column",
+    border: true,
+    borderStyle: "rounded",
+    borderColor: THEME.green,
+    paddingLeft: 1,
+    paddingRight: 1
+  })
+
+  const panelMenu = new Text(ctx, { content: "", fg: THEME.dim, flexShrink: 0 })
+  const panelQuestion = new Text(ctx, { content: "", fg: THEME.green, flexShrink: 0 })
+  const panelBody: ScrollBoxRenderable = new ScrollBox(ctx, {
+    flexGrow: 1,
+    ...transparentLayers,
+    rootOptions: { backgroundColor: "transparent" }
+  })
+  const panelAnswer = new Text(ctx, { content: "", fg: TEXT })
+  panelBody.add(panelAnswer)
+
+  panel.add(panelMenu)
+  panel.add(panelQuestion)
+  panel.add(panelBody)
+
   // The bottom bar belongs to the window, not to either screen.
   const bar = new Text(ctx, { content: "", fg: THEME.dim, flexShrink: 0 })
   screen.add(bar)
@@ -245,12 +289,17 @@ export const launch = async (initialUrl?: string): Promise<void> => {
 
   // ----------------------------------------------------------------- state
 
-  type Mode = "home" | "loading" | "reader" | "search"
+  type Mode = "home" | "loading" | "reader" | "search" | "ask" | "askInput"
   let mode: Mode = "home"
   let transcript: Transcript | null = null
   let query = ""
   let showTimestamps = true
   let flash = ""
+  let panelOpen = false
+  let question = ""
+  let answer = ""
+  let running: AskHandle | null = null
+  let scopeVisibleOnly = false
   const lines: Array<InstanceType<typeof Text>> = []
 
   const paragraphs = () => (transcript === null ? [] : toParagraphs(transcript.cues))
@@ -259,6 +308,16 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     query === ""
       ? paragraphs()
       : paragraphs().filter((p) => p.text.toLowerCase().includes(query.toLowerCase()))
+
+  /** What actually gets piped to the AI CLI. */
+  const payload = (): string => {
+    if (transcript === null) return ""
+    const chosen = scopeVisibleOnly ? matching() : paragraphs()
+    const body = chosen
+      .map((p) => `[${formatTimestamp(p.start)}] ${p.text}`)
+      .join("\n\n")
+    return `Video: ${transcript.title}\nChannel: ${transcript.author}\n\n${body}`
+  }
 
   const keyHint = (): Array<TextChunk> => {
     const lead = inDim("  ")
@@ -276,10 +335,33 @@ export const launch = async (initialUrl?: string): Promise<void> => {
           inDim("  "),
           ...pair("esc", "clear")
         ]
+      case "askInput":
+        return [
+          lead,
+          inDim("ask: "),
+          inGreen(`${question}█`),
+          inDim("   "),
+          ...pair("enter", "send"),
+          inDim("  "),
+          ...pair("esc", "cancel")
+        ]
+      case "ask":
+        return running !== null
+          ? [lead, inGreen("thinking…"), inDim("   "), ...pair("esc", "stop")]
+          : [
+              lead,
+              ...pair("tab", "transcript"),
+              inDim("  "),
+              ...pair("y", "copy answer"),
+              inDim("  "),
+              ...pair("esc", "close")
+            ]
       default:
         return [
           lead,
           ...pair("/", "search"),
+          inDim("  "),
+          ...pair("a", "ask ai"),
           inDim("  "),
           ...pair("y", "copy"),
           inDim("  "),
@@ -296,6 +378,55 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     const chunks = keyHint()
     bar.content =
       flash === "" ? styled(...chunks) : styled(...chunks, inGreen(`      ${flash}`))
+  }
+
+  const paintPanel = (): void => {
+    const active = tool()
+    panel.title = active === null ? " ask ai " : ` ask ai · ${active.label} `
+    panel.titleColor = THEME.dim
+
+    if (active === null) {
+      panelMenu.content = ""
+      panelQuestion.content = ""
+      panelAnswer.content = wrap(
+        "No AI CLI found on your PATH.\n\n" +
+          "Install any of: claude, codex, qwen, gemini, opencode, llm.\n\n" +
+          "They are used exactly as you have them configured. No API keys are " +
+          "stored here.",
+        PANEL_WIDTH - 4
+      )
+      return
+    }
+
+    // Two per row, column-aligned, so no label wraps across a line break.
+    const column = Math.floor((PANEL_WIDTH - 4) / 2)
+    const chunks: Array<TextChunk> = []
+    for (let i = 0; i < PRESETS.length; i += 2) {
+      for (const preset of [PRESETS[i], PRESETS[i + 1]]) {
+        if (preset === undefined) continue
+        chunks.push(...pair(preset.key, preset.label, column))
+      }
+      chunks.push(inDim("\n"))
+    }
+    chunks.push(
+      ...pair("i", "ask…"),
+      inDim("  "),
+      ...pair("m", "model"),
+      inDim("  "),
+      ...pair("o", `scope: ${scopeVisibleOnly ? "screen" : "all"}`),
+      inDim("\n")
+    )
+    panelMenu.content = styled(...chunks)
+
+    panelQuestion.content =
+      question === "" ? "" : `${wrap(`> ${question}`, PANEL_WIDTH - 4)}\n`
+
+    panelAnswer.content =
+      answer === ""
+        ? running !== null
+          ? "thinking…"
+          : `Pick a preset, or press i to type a question.\n\n~${estimateTokens(payload())} tokens will be sent.`
+        : wrap(answer, PANEL_WIDTH - 4)
   }
 
   const paintReader = (): void => {
@@ -341,6 +472,13 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     }
   }
 
+  const setPanelOpen = (open: boolean): void => {
+    if (open === panelOpen) return
+    panelOpen = open
+    if (open) reader.add(panel)
+    else reader.remove(panel)
+  }
+
   const show = (next: Mode): void => {
     mode = next
     const onHome = next === "home" || next === "loading"
@@ -354,9 +492,40 @@ export const launch = async (initialUrl?: string): Promise<void> => {
 
     if (!onHome) {
       paintReader()
-      }
+      if (panelOpen) paintPanel()
+    }
     paintBar()
     renderer.requestRender()
+  }
+
+  // ------------------------------------------------------------------- ai
+
+  const runAsk = (prompt: string): void => {
+    const active = tool()
+    if (active === null || transcript === null) return
+
+    running?.cancel()
+    question = prompt
+    answer = ""
+    show("ask")
+
+    running = ask({
+      tool: active,
+      question: prompt,
+      transcript: payload(),
+      onChunk: (chunk) => {
+        answer += chunk
+        paintPanel()
+        renderer.requestRender()
+      },
+      onDone: (error) => {
+        running = null
+        if (error !== null) answer = answer === "" ? error : `${answer}\n\n${error}`
+        paintPanel()
+        paintBar()
+        renderer.requestRender()
+      }
+    })
   }
 
   // ---------------------------------------------------------------- fetch
@@ -389,6 +558,8 @@ export const launch = async (initialUrl?: string): Promise<void> => {
 
     transcript = result.success
     query = ""
+    answer = ""
+    question = ""
     flash = ""
     homeStatus.content = ""
     scroll.scrollTo(0)
@@ -409,18 +580,87 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     // The URL field owns every keystroke while the home screen is up.
     if (mode === "home" || mode === "loading") return
 
-    if (mode === "search") {
+    if (mode === "search" || mode === "askInput") {
+      const buffer = mode === "search" ? query : question
+      const commit = (next: string): void => {
+        if (mode === "search") query = next
+        else question = next
+      }
+
       if (name === "escape") {
-        query = ""
-        show("reader")
+        commit("")
+        show(mode === "search" ? "reader" : "ask")
       } else if (name === "return") {
-        show("reader")
+        if (mode === "askInput") {
+          if (question.trim() === "") show("ask")
+          else runAsk(question.trim())
+        } else show("reader")
       } else if (name === "backspace") {
-        query = query.slice(0, -1)
-        show("search")
+        commit(buffer.slice(0, -1))
+        show(mode)
       } else if (typed.length === 1) {
-        query += typed
-        show("search")
+        commit(buffer + typed)
+        show(mode)
+      }
+      return
+    }
+
+    if (mode === "ask") {
+      if (name === "escape") {
+        if (running !== null) {
+          running.cancel()
+          running = null
+          show("ask")
+        } else {
+          setPanelOpen(false)
+          show("reader")
+        }
+        return
+      }
+      if (name === "tab") {
+        show("reader")
+        return
+      }
+
+      const preset = PRESETS.find((p) => p.key === name)
+      if (preset !== undefined && running === null) {
+        runAsk(preset.prompt)
+        return
+      }
+
+      switch (name) {
+        case "i":
+          question = ""
+          show("askInput")
+          break
+        case "m":
+          if (tools.length > 0) {
+            toolIndex = (toolIndex + 1) % tools.length
+            answer = ""
+            question = ""
+            show("ask")
+          }
+          break
+        case "o":
+          scopeVisibleOnly = !scopeVisibleOnly
+          show("ask")
+          break
+        case "y":
+          if (answer !== "") {
+            copyToClipboard(answer)
+            flash = `copied ~${estimateTokens(answer)} tokens`
+            paintBar()
+            renderer.requestRender()
+          }
+          break
+        case "down":
+          panelBody.scrollBy({ x: 0, y: 2 })
+          break
+        case "up":
+          panelBody.scrollBy({ x: 0, y: -2 })
+          break
+        default:
+          break
       }
       return
     }
@@ -431,7 +671,15 @@ export const launch = async (initialUrl?: string): Promise<void> => {
         quit()
         break
       case "escape":
+        setPanelOpen(false)
         show("home")
+        break
+      case "a":
+        setPanelOpen(true)
+        show("ask")
+        break
+      case "tab":
+        if (panelOpen) show("ask")
         break
       case "slash":
         query = ""
