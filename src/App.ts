@@ -27,24 +27,30 @@ import type {
  * sits inside whatever theme the user already chose rather than painting a
  * rectangle of someone else's dark grey over it.
  *
- * Every value clears 3:1 contrast against white, black, #0d1117, and
- * solarized light, which is the band where a colour stays legible whichever
- * theme the user runs. Red is reserved for failures so it keeps meaning
- * something; using it for ordinary chrome made the app look permanently
- * broken.
+ * Colours carry meaning rather than decoration, so a hint bar can be read at
+ * a glance: leaving is red, copying is green, moving is blue, settings are
+ * orange, and anything to do with the AI is violet.
+ *
+ * Every value clears 3:1 contrast against white, black, #0d1117, solarized
+ * light, and #f5f5f5. That band is what keeps a colour legible whichever
+ * theme the user runs, and it is why these are mid-tones rather than the
+ * brighter versions that only work on a dark background.
  */
 const THEME = {
-  /** Timestamps, prompts, focus. 4.81:1 on black, 4.37:1 on white. */
-  green: "#2b8a3e",
-  /** The wordmark only. Large text, so 3:1 is the relevant bar. */
-  greenBright: "#2f9e44",
-  /** Keys you can press. Distinct from green without shouting. */
-  key: "#946300",
-  /** Labels and secondary text. 4.34:1 on black, 4.83:1 on white. */
-  dim: "#6b7280",
-  border: "#5a6472",
-  /** Errors, and nothing else. */
-  bad: "#c92a2a"
+  /** Identity: wordmark, panel edge, AI prompts. */
+  brand: "#8b5cf6",
+  /** Timestamps. Structural, so it should not compete with the words. */
+  time: "#0f766e",
+  /** Moving around: search, focus. */
+  nav: "#0284c7",
+  /** Something was taken or confirmed: copy, enter. */
+  ok: "#059669",
+  /** Leaving or stopping, and anything that failed. */
+  danger: "#e11d48",
+  /** Changing a setting: toggles and pickers. */
+  option: "#c2410c",
+  /** Padding, secondary text, box edges. */
+  dim: "#64748b"
 } as const
 
 /**
@@ -94,21 +100,32 @@ export const launch = async (initialUrl?: string): Promise<void> => {
   // theme too. parseColor("default") is not a thing; this sentinel is.
   const TEXT = tui.RGBA.defaultForeground()
 
-  const inKey = fg(THEME.key)
   const inText = fg(TEXT)
   const inDim = fg(THEME.dim)
-  const inGreen = fg(THEME.green)
+  const inBrand = fg(THEME.brand)
+  const inNav = fg(THEME.nav)
+  const inOk = fg(THEME.ok)
+  const inDanger = fg(THEME.danger)
+  const inOption = fg(THEME.option)
+
+  type Paint = (input: string) => TextChunk
 
   /**
-   * One "key label" pair, with the pressable key picked out in its own colour
-   * so the eye can find it without reading the whole line. `width` pads the
-   * cell so stacked rows line up into columns.
+   * One "key label" pair. The key carries a colour that means something:
+   * leaving is red, copying is green, moving is blue, and so on. That way the
+   * hint bar can be read at a glance instead of word by word.
+   *
+   * The label stays in the terminal's own text colour. Dimming it as well as
+   * the key made whole menus look disabled.
    */
-  const pair = (keyName: string, label: string, width = 0): Array<TextChunk> => {
+  const pair = (
+    keyName: string,
+    label: string,
+    paint: Paint,
+    width = 0
+  ): Array<TextChunk> => {
     const gap = Math.max(1, width - keyName.length - label.length - 1)
-    // The label is ordinary text, not secondary. Dimming it as well as the
-    // key made whole menus read as disabled.
-    return [inKey(keyName), inText(` ${label}`), inDim(" ".repeat(gap))]
+    return [paint(keyName), inText(` ${label}`), inDim(" ".repeat(gap))]
   }
 
   const styled = (...chunks: Array<TextChunk>): StyledTextType =>
@@ -179,7 +196,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     new ASCIIFontRenderable(ctx, {
       text: "transcript",
       font: "tiny",
-      color: THEME.greenBright
+      color: THEME.brand
     })
   )
   const wordmark = wordmarkSlot
@@ -196,9 +213,9 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     marginTop: 1,
     border: true,
     borderStyle: "rounded",
-    borderColor: THEME.green,
+    borderColor: THEME.brand,
     title: " paste a youtube url ",
-    titleColor: THEME.green,
+    titleColor: THEME.brand,
     paddingLeft: 1,
     paddingRight: 1
   })
@@ -230,7 +247,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     flexShrink: 0,
     border: true,
     borderStyle: "rounded",
-    borderColor: THEME.border,
+    borderColor: THEME.dim,
     paddingLeft: 1,
     paddingRight: 1
   })
@@ -247,7 +264,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     scrollbarOptions: {
       trackOptions: {
         backgroundColor: "transparent",
-        foregroundColor: THEME.border
+        foregroundColor: THEME.dim
       }
     }
   } as const
@@ -259,7 +276,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
       backgroundColor: "transparent",
       border: true,
       borderStyle: "rounded",
-      borderColor: THEME.border,
+      borderColor: THEME.dim,
       paddingLeft: 1,
       paddingRight: 1
     }
@@ -283,13 +300,13 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     flexDirection: "column",
     border: true,
     borderStyle: "rounded",
-    borderColor: THEME.green,
+    borderColor: THEME.brand,
     paddingLeft: 1,
     paddingRight: 1
   })
 
   const panelMenu = new Text(ctx, { content: "", fg: THEME.dim, flexShrink: 0 })
-  const panelQuestion = new Text(ctx, { content: "", fg: THEME.green, flexShrink: 0 })
+  const panelQuestion = new Text(ctx, { content: "", fg: THEME.brand, flexShrink: 0 })
   const panelBody: ScrollBoxRenderable = new ScrollBox(ctx, {
     flexGrow: 1,
     ...transparentLayers,
@@ -352,55 +369,55 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     const lead = inDim("  ")
     switch (mode) {
       case "home":
-        return [lead, ...pair("enter", "fetch"), inDim("   "), ...pair("^c", "quit")]
+        return [lead, ...pair("enter", "fetch", inOk), inDim("   "), ...pair("^c", "quit", inDanger)]
       case "loading":
         return [lead, inDim("fetching…")]
       case "search":
         return [
           lead,
-          inGreen(`/${query}█`),
+          inNav(`/${query}█`),
           inDim("   "),
-          ...pair("enter", "apply"),
+          ...pair("enter", "apply", inOk),
           inDim("  "),
-          ...pair("esc", "clear")
+          ...pair("esc", "clear", inDanger)
         ]
       case "askInput":
         return [
           lead,
           inDim("ask: "),
-          inGreen(`${question}█`),
+          inBrand(`${question}█`),
           inDim("   "),
-          ...pair("enter", "send"),
+          ...pair("enter", "send", inOk),
           inDim("  "),
-          ...pair("esc", "cancel")
+          ...pair("esc", "cancel", inDanger)
         ]
       case "ask":
         return running !== null
-          ? [lead, inGreen("thinking…"), inDim("   "), ...pair("esc", "stop")]
+          ? [lead, inBrand("thinking…"), inDim("   "), ...pair("esc", "stop", inDanger)]
           : [
               lead,
-              ...pair("tab", "transcript"),
+              ...pair("tab", "transcript", inNav),
               inDim("  "),
-              ...pair("y", "copy answer"),
+              ...pair("y", "copy answer", inOk),
               inDim("  "),
-              ...pair("esc", "close"),
+              ...pair("esc", "close", inDanger),
               inDim("  "),
-              ...pair("q", "quit")
+              ...pair("q", "quit", inDanger)
             ]
       default:
         return [
           lead,
-          ...pair("/", "search"),
+          ...pair("/", "search", inNav),
           inDim("  "),
-          ...pair("a", "ask ai"),
+          ...pair("a", "ask ai", inBrand),
           inDim("  "),
-          ...pair("y", "copy"),
+          ...pair("y", "copy", inOk),
           inDim("  "),
-          ...pair("t", "times"),
+          ...pair("t", "times", inOption),
           inDim("  "),
-          ...pair("esc", "new url"),
+          ...pair("esc", "new url", inDanger),
           inDim("  "),
-          ...pair("q", "quit")
+          ...pair("q", "quit", inDanger)
         ]
     }
   }
@@ -408,13 +425,13 @@ export const launch = async (initialUrl?: string): Promise<void> => {
   const paintBar = (): void => {
     const chunks = keyHint()
     bar.content =
-      flash === "" ? styled(...chunks) : styled(...chunks, inGreen(`      ${flash}`))
+      flash === "" ? styled(...chunks) : styled(...chunks, inOk(`      ${flash}`))
   }
 
   const paintPanel = (): void => {
     const active = tool()
     panel.title = active === null ? " ask ai " : ` ask ai · ${active.label} `
-    panel.titleColor = THEME.green
+    panel.titleColor = THEME.brand
 
     if (active === null) {
       panelMenu.content = ""
@@ -435,16 +452,16 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     for (let i = 0; i < PRESETS.length; i += 2) {
       for (const preset of [PRESETS[i], PRESETS[i + 1]]) {
         if (preset === undefined) continue
-        chunks.push(...pair(preset.key, preset.label, column))
+        chunks.push(...pair(preset.key, preset.label, inBrand, column))
       }
       chunks.push(inDim("\n"))
     }
     chunks.push(
-      ...pair("i", "ask…"),
+      ...pair("i", "ask…", inBrand),
       inDim("  "),
-      ...pair("m", "model"),
+      ...pair("m", "model", inOption),
       inDim("  "),
-      ...pair("o", `scope: ${scopeVisibleOnly ? "screen" : "all"}`),
+      ...pair("o", `scope: ${scopeVisibleOnly ? "screen" : "all"}`, inOption),
       inDim("\n")
     )
     panelMenu.content = styled(...chunks)
@@ -492,7 +509,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
       if (showTimestamps) {
         const stamp = new Text(ctx, {
           content: `\n[${formatTimestamp(paragraph.start)}]`,
-          fg: THEME.green
+          fg: THEME.time
         })
         lines.push(stamp)
         scroll.add(stamp)
@@ -567,7 +584,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
 
     if (parseVideoId(url) === null && !isDemoTarget(url)) {
       homeStatus.content = "That does not look like a YouTube URL."
-      homeStatus.fg = THEME.bad
+      homeStatus.fg = THEME.danger
       renderer.requestRender()
       return
     }
@@ -582,7 +599,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
 
     if (result._tag === "Failure") {
       homeStatus.content = explain(result.failure)
-      homeStatus.fg = THEME.bad
+      homeStatus.fg = THEME.danger
       show("home")
       return
     }
