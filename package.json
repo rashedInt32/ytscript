@@ -29,6 +29,7 @@
     "effect": "4.0.0-rc.113"
   },
   "optionalDependencies": {
+    "@effect/platform-bun": "4.0.0-rc.113",
     "@opentui/core": "^0.5.11"
   },
   "devDependencies": {

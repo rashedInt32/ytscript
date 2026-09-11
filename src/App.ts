@@ -10,9 +10,12 @@
  */
 import { spawn } from "node:child_process"
 import * as Effect from "effect/Effect"
+import * as Fiber from "effect/Fiber"
+import * as ManagedRuntime from "effect/ManagedRuntime"
+import * as BunServices from "@effect/platform-bun/BunServices"
 import { estimateTokens, formatTimestamp, toParagraphs, wrap } from "./Format.ts"
 import { explain, getTranscript, parseVideoId, type Transcript } from "./Youtube.ts"
-import { ask, detectTools, PRESETS, type AiTool, type AskHandle } from "./Ai.ts"
+import { ask, detectTools, explainAsk, PRESETS, type AiTool } from "./Ai.ts"
 import { isDemoTarget } from "./Demo.ts"
 import type {
   BoxRenderable,
@@ -310,7 +313,11 @@ export const launch = async (initialUrl?: string): Promise<void> => {
 
   // ------------------------------------------------------------- ai panel
 
-  const tools = detectTools()
+  // One runtime for everything that needs a platform service: finding the AI
+  // CLIs, and running them. Bun-only, which this module already is.
+  const runtime = ManagedRuntime.make(BunServices.layer)
+
+  const tools = await runtime.runPromise(detectTools)
   let toolIndex = 0
   const tool = (): AiTool | null => tools[toolIndex] ?? null
 
@@ -366,7 +373,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
   let panelOpen = false
   let question = ""
   let answer = ""
-  let running: AskHandle | null = null
+  let running: Fiber.Fiber<void, never> | null = null
   let scopeVisibleOnly = false
   const lines: Array<InstanceType<typeof Text>> = []
 
@@ -570,32 +577,50 @@ export const launch = async (initialUrl?: string): Promise<void> => {
 
   // ------------------------------------------------------------------- ai
 
+  /** Kills whatever question is in flight. Safe when there is none. */
+  const cancelAsk = (): void => {
+    if (running === null) return
+    Effect.runFork(Fiber.interrupt(running))
+    running = null
+  }
+
   const runAsk = (prompt: string): void => {
     const active = tool()
     if (active === null || transcript === null) return
 
-    running?.cancel()
+    cancelAsk()
     question = prompt
     answer = ""
     show("ask")
 
-    running = ask({
-      tool: active,
-      question: prompt,
-      transcript: payload(),
-      onChunk: (chunk) => {
-        answer += chunk
-        paintPanel()
-        renderer.requestRender()
-      },
-      onDone: (error) => {
-        running = null
-        if (error !== null) answer = answer === "" ? error : `${answer}\n\n${error}`
-        paintPanel()
-        paintBar()
-        renderer.requestRender()
-      }
-    })
+    running = runtime.runFork(
+      ask({
+        tool: active,
+        question: prompt,
+        transcript: payload(),
+        onChunk: (chunk) => {
+          answer += chunk
+          paintPanel()
+          renderer.requestRender()
+        }
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.sync(() => {
+            const message = explainAsk(error)
+            answer = answer === "" ? message : `${answer}\n\n${message}`
+          })
+        ),
+        // Fires on interrupt too, which is what redraws the panel after escape.
+        Effect.onExit(() =>
+          Effect.sync(() => {
+            running = null
+            paintPanel()
+            paintBar()
+            renderer.requestRender()
+          })
+        )
+      )
+    )
   }
 
   // ---------------------------------------------------------------- fetch
@@ -678,8 +703,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     if (mode === "ask") {
       if (name === "escape") {
         if (running !== null) {
-          running.cancel()
-          running = null
+          cancelAsk()
           show("ask")
         } else {
           setPanelOpen(false)

@@ -9,10 +9,22 @@
  *
  * No API keys live here. We shell out to whatever the user has already set up
  * and authenticated, which is the same principle as the rest of the tool.
+ * `effect/unstable/ai` is deliberately not used: it speaks to provider HTTP
+ * APIs and wants a key, which is the opposite trade.
+ *
+ * The process plumbing is Effect's. A question is an `Effect`, so cancelling
+ * one is interrupting its fiber, and the scope kills the child on the way out.
  */
-import { spawn, type ChildProcess } from "node:child_process"
-import { accessSync, constants } from "node:fs"
-import { delimiter, join } from "node:path"
+import * as Data from "effect/Data"
+import * as Effect from "effect/Effect"
+import * as Fiber from "effect/Fiber"
+import * as FileSystem from "effect/FileSystem"
+import * as Filter from "effect/Filter"
+import * as Path from "effect/Path"
+import * as Result from "effect/Result"
+import * as Stream from "effect/Stream"
+import * as ChildProcess from "effect/unstable/process/ChildProcess"
+import { ChildProcessSpawner } from "effect/unstable/process/ChildProcessSpawner"
 
 /**
  * A line-oriented streaming protocol, where supported.
@@ -78,49 +90,72 @@ const CANDIDATES: ReadonlyArray<Candidate> = [
 
 /** Places tools install to that a non-login shell often misses. */
 const EXTRA_DIRS = [
-  join(process.env.HOME ?? "", ".local/bin"),
-  join(process.env.HOME ?? "", ".bun/bin"),
-  join(process.env.HOME ?? "", ".cargo/bin"),
+  "~/.local/bin",
+  "~/.bun/bin",
+  "~/.cargo/bin",
   "/opt/homebrew/bin",
   "/usr/local/bin"
 ]
 
-const isExecutable = (path: string): boolean => {
-  try {
-    accessSync(path, constants.X_OK)
-    return true
-  } catch {
-    return false
-  }
+/** PATH first, then the usual install directories. Duplicates are harmless. */
+const searchDirs = (path: Path.Path): ReadonlyArray<string> => {
+  const home = process.env.HOME ?? ""
+  const extra = EXTRA_DIRS.map((dir) =>
+    dir.startsWith("~/") ? path.join(home, dir.slice(2)) : dir
+  )
+  // Path has no `delimiter`, and it is decided by the same thing as `sep`.
+  const delimiter = path.sep === "\\" ? ";" : ":"
+  return [...(process.env.PATH ?? "").split(delimiter), ...extra].filter(
+    (dir) => dir !== ""
+  )
 }
 
-const resolve = (bin: string): string | null => {
-  const dirs = [...(process.env.PATH ?? "").split(delimiter), ...EXTRA_DIRS]
-  for (const dir of dirs) {
-    if (dir === "") continue
-    const full = join(dir, bin)
-    if (isExecutable(full)) return full
-  }
-  return null
-}
+/**
+ * A file the OS will let us run.
+ *
+ * The executable bit rather than mere existence, so a stray `claude` data file
+ * on PATH is not mistaken for the CLI. Anything unreadable is simply not a
+ * match, so a permission error here is not worth surfacing.
+ */
+const isExecutable = (
+  fs: FileSystem.FileSystem,
+  candidate: string
+): Effect.Effect<boolean> =>
+  fs.stat(candidate).pipe(
+    Effect.match({
+      onFailure: () => false,
+      onSuccess: (info) => info.type === "File" && (info.mode & 0o111) !== 0
+    })
+  )
+
+const resolve = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  bin: string
+): Effect.Effect<string | null> =>
+  Effect.gen(function* () {
+    for (const dir of searchDirs(path)) {
+      const full = path.join(dir, bin)
+      if (yield* isExecutable(fs, full)) return full
+    }
+    return null
+  })
 
 /** Every AI CLI we can find, in preference order. Empty if none installed. */
-export const detectTools = (): ReadonlyArray<AiTool> => {
+export const detectTools: Effect.Effect<
+  ReadonlyArray<AiTool>,
+  never,
+  FileSystem.FileSystem | Path.Path
+> = Effect.gen(function* () {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
   const found: Array<AiTool> = []
   for (const candidate of CANDIDATES) {
-    const bin = resolve(candidate.id)
-    if (bin !== null) {
-      found.push({
-        id: candidate.id,
-        label: candidate.label,
-        bin,
-        args: candidate.args,
-        stream: candidate.stream
-      })
-    }
+    const bin = yield* resolve(fs, path, candidate.id)
+    if (bin !== null) found.push({ ...candidate, bin })
   }
   return found
-}
+})
 
 export interface Preset {
   readonly key: string
@@ -155,9 +190,33 @@ export const PRESETS: ReadonlyArray<Preset> = [
   }
 ]
 
-export interface AskHandle {
-  /** Kills the process. Safe to call after it has already exited. */
-  readonly cancel: () => void
+/** The tool could not be started, or died before it could answer. */
+export class ToolUnavailable extends Data.TaggedError("ToolUnavailable")<{
+  readonly tool: string
+  readonly cause: unknown
+}> {}
+
+/** The tool ran and exited non-zero. */
+export class ToolFailed extends Data.TaggedError("ToolFailed")<{
+  readonly tool: string
+  readonly exitCode: number
+  readonly stderr: string
+}> {}
+
+export type AskError = ToolUnavailable | ToolFailed
+
+/** A sentence to put in the panel. Mirrors `explain` in Youtube.ts. */
+export const explainAsk = (error: AskError): string => {
+  switch (error._tag) {
+    case "ToolUnavailable":
+      return `Could not run ${error.tool}: ${String(error.cause)}`
+    case "ToolFailed": {
+      const detail = error.stderr.trim().split("\n").slice(-3).join("\n")
+      return detail === ""
+        ? `${error.tool} exited with code ${error.exitCode}.`
+        : `${error.tool} failed:\n${detail}`
+    }
+  }
 }
 
 export interface AskOptions {
@@ -165,90 +224,74 @@ export interface AskOptions {
   readonly question: string
   readonly transcript: string
   readonly onChunk: (text: string) => void
-  readonly onDone: (error: string | null) => void
 }
+
+const encoder = new TextEncoder()
+
+/** Lines that carry no prose are the common case, so drop them here. */
+const prose = (mode: StreamMode): Filter.Filter<string, string> =>
+  Filter.make((line) => {
+    if (line.trim() === "") return Result.fail(line)
+    const text = mode.extract(line)
+    return text === null || text === "" ? Result.fail(line) : Result.succeed(text)
+  })
 
 /**
- * Runs one question and streams stdout back through `onChunk`.
+ * Runs one question and pushes stdout through `onChunk` as it arrives.
  *
- * stderr is collected rather than streamed, because these CLIs use it for
- * progress spinners that would otherwise shred the panel. It is only surfaced
- * if the process exits non-zero.
+ * Interrupting the fiber kills the child: the spawn is scoped, so there is no
+ * cancel handle to forget to call. stderr is collected rather than streamed,
+ * because these CLIs use it for progress spinners that would otherwise shred
+ * the panel. It is only surfaced if the process exits non-zero.
  */
-export const ask = (options: AskOptions): AskHandle => {
-  const streaming = options.tool.stream
-  const argv =
-    streaming === undefined
-      ? options.tool.args(options.question)
-      : streaming.args(options.question)
+export const ask = (
+  options: AskOptions
+): Effect.Effect<void, AskError, ChildProcessSpawner> =>
+  Effect.gen(function* () {
+    const spawner = yield* ChildProcessSpawner
+    const streaming = options.tool.stream
+    const argv =
+      streaming === undefined
+        ? options.tool.args(options.question)
+        : streaming.args(options.question)
 
-  let child: ChildProcess
-  try {
-    child = spawn(options.tool.bin, [...argv], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, NO_COLOR: "1", TERM: "dumb" }
+    const command = ChildProcess.make(options.tool.bin, [...argv], {
+      // Closing stdin is what tells the tool to start work. A long transcript
+      // can outrun the pipe buffer, and the stream handles that back-pressure.
+      stdin: { stream: Stream.make(encoder.encode(`${options.transcript}\n`)) },
+      // extendEnv defaults to false, and these CLIs need PATH and whatever
+      // credential variables their own login wrote.
+      env: { NO_COLOR: "1", TERM: "dumb" },
+      extendEnv: true
     })
-  } catch (error) {
-    options.onDone(`Could not start ${options.tool.label}: ${String(error)}`)
-    return { cancel: () => {} }
-  }
 
-  let stderr = ""
-  let settled = false
+    const handle = yield* spawner.spawn(command)
+    const stderr = yield* Effect.forkChild(
+      Stream.mkString(Stream.decodeText(handle.stderr))
+    )
 
-  const finish = (error: string | null): void => {
-    if (settled) return
-    settled = true
-    options.onDone(error)
-  }
+    const text = Stream.decodeText(handle.stdout)
+    const output =
+      streaming === undefined
+        ? text
+        : Stream.filterMap(Stream.splitLines(text), prose(streaming))
 
-  child.stdout?.setEncoding("utf8")
-  if (streaming === undefined) {
-    child.stdout?.on("data", (chunk: string) => options.onChunk(chunk))
-  } else {
-    // NDJSON arrives in arbitrary slices, so hold the trailing partial line.
-    let pending = ""
-    child.stdout?.on("data", (chunk: string) => {
-      pending += chunk
-      const parts = pending.split("\n")
-      pending = parts.pop() ?? ""
-      for (const line of parts) {
-        if (line.trim() === "") continue
-        const text = streaming.extract(line)
-        if (text !== null && text !== "") options.onChunk(text)
-      }
+    yield* Stream.runForEach(output, (chunk) =>
+      Effect.sync(() => options.onChunk(chunk))
+    )
+
+    const code = yield* handle.exitCode
+    if (code === 0) return
+    return yield* new ToolFailed({
+      tool: options.tool.label,
+      exitCode: code,
+      stderr: yield* Fiber.join(stderr)
     })
-  }
-  child.stderr?.setEncoding("utf8")
-  child.stderr?.on("data", (chunk: string) => {
-    stderr += chunk
-  })
-
-  child.on("error", (error) => {
-    finish(`${options.tool.label} failed to run: ${error.message}`)
-  })
-
-  child.on("close", (code) => {
-    if (code === 0 || code === null) finish(null)
-    else {
-      const detail = stderr.trim().split("\n").slice(-3).join("\n")
-      finish(
-        detail === ""
-          ? `${options.tool.label} exited with code ${code}.`
-          : `${options.tool.label} failed:\n${detail}`
-      )
-    }
-  })
-
-  // A long transcript can outrun the pipe buffer, so ignore EPIPE if the tool
-  // decides it has read enough and closes stdin early.
-  child.stdin?.on("error", () => {})
-  child.stdin?.end(`${options.transcript}\n`)
-
-  return {
-    cancel: () => {
-      if (!settled) child.kill("SIGTERM")
-      finish(null)
-    }
-  }
-}
+  }).pipe(
+    Effect.scoped,
+    Effect.mapError((error) =>
+      error instanceof ToolFailed
+        ? error
+        : new ToolUnavailable({ tool: options.tool.label, cause: error })
+    )
+  )
