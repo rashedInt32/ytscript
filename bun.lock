@@ -19,6 +19,12 @@
       },
     },
   },
+  "patchedDependencies": {
+    "@effect/platform-node-shared@4.0.0-rc.113": "patches/@effect%2Fplatform-node-shared@4.0.0-rc.113.patch",
+  },
+  "overrides": {
+    "@effect/platform-node-shared": "4.0.0-rc.113",
+  },
   "packages": {
     "@changesets/apply-release-plan": ["@changesets/apply-release-plan@8.1.0", "", { "dependencies": { "@changesets/config": "^4.0.0", "@changesets/format": "^0.1.2", "@changesets/git": "^4.0.1", "@changesets/should-skip-package": "^1.0.0", "@changesets/types": "^7.0.0", "import-meta-resolve": "^4.2.0", "jsonc-parser": "^3.3.1", "semver": "^7.8.1" } }, "sha512-M93HOGyX3ssg6He3b5NotaHtQVu6uajHS6UIQ28xKt2RzskCy73ayX4I914qBKjTJmrE4YFlELQjfcqxbmGLJw=="],
 
@@ -56,7 +62,7 @@
 
     "@effect/platform-bun": ["@effect/platform-bun@4.0.0-rc.113", "", { "dependencies": { "@effect/platform-node-shared": "^4.0.0-rc.113" }, "peerDependencies": { "effect": "^4.0.0-rc.113" } }, "sha512-EOn8doDVaiizfTpdmtRS0SZLAAt19yyHFKg+aV8YXJreNDYqXQLEt+/ThiEOurDimApVYhn2NZW52OJrZlybQw=="],
 
-    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-rc.114", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.21.3" }, "peerDependencies": { "effect": "^4.0.0-rc.114" } }, "sha512-YVoL71bJpa8HmAZl63nvVgOI4UBg61Z+6U0qnNN2ZlUktxG7eu26Y/puRxEtMxivxEUHR5vKJsuqQ3PRK4fLQA=="],
+    "@effect/platform-node-shared": ["@effect/platform-node-shared@4.0.0-rc.113", "", { "dependencies": { "@types/ws": "^8.18.1", "ws": "^8.21.3" }, "peerDependencies": { "effect": "^4.0.0-rc.113" } }, "sha512-EPCfjvKlHmNDgqIlT85P1OcgNUNvRxNtBpTFOz1UGHwNJe6Ap7rP93Rue7kzFUeplQMy6EfoZEH4CJR4N0nJ1g=="],
 
     "@manypkg/find-root": ["@manypkg/find-root@3.1.0", "", { "dependencies": { "@manypkg/tools": "^2.1.0" } }, "sha512-BcSqCyKhBVZ5YkSzOiheMCV41kqAFptW6xGqYSTjkVTl9XQpr+pqHhwgGCOHQtjDCv7Is6EFyA14Sm5GVbVABA=="],
 

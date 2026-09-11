@@ -1,0 +1,17 @@
+diff --git a/dist/NodeSink.js b/dist/NodeSink.js
+index 8e7289048735c99ee9a8b9f8f34a22eefa9aeb36..ae396a9b20c17d675865f764808aecda68655bc3 100644
+--- a/dist/NodeSink.js
++++ b/dist/NodeSink.js
+@@ -91,6 +91,11 @@ export const pullIntoWritable = options => options.pull.pipe(Effect.flatMap(chun
+   options.writable.once("error", onError);
+   return Effect.sync(() => {
+     options.writable.off("error", onError);
++    // PATCH: endOnDone calls writable.end() and settles on "finish", which
++    // tears this arm down. A broken pipe can still emit "error" afterwards,
++    // and with no listener left Node escalates it to an uncaught exception.
++    // Absorb the late one.
++    options.writable.on("error", () => {});
+   });
+ })));
+ //# sourceMappingURL=NodeSink.js.map
+\ No newline at end of file
