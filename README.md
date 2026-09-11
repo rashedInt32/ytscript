@@ -9,6 +9,12 @@ yts                                      # open the app
 yts "https://youtu.be/dQw4w9WgXcQ"       # print the transcript
 ```
 
+## Demo
+
+Pasting a URL, reading the transcript, then asking a local AI CLI about it.
+
+https://github.com/user-attachments/assets/f8c9045e-064a-4c23-bcdb-ab5d7017e45c
+
 ## Install
 
 ```bash
