@@ -52,8 +52,14 @@ a split install base.
 
 ### Known packaging constraints
 
-`@opentui/core` is an optional dependency, so `npm install` succeeds without
-it, and only the app needs it. The plain output path runs anywhere.
+`@opentui/core` and `@effect/platform-bun` are optional dependencies, so
+`npm install` succeeds without them, and only the app needs them. The plain
+output path runs anywhere.
+
+`@effect/platform-bun` provides the `ChildProcessSpawner` layer that `src/Ai.ts`
+uses to run the local AI CLIs. `effect` ships the `ChildProcess` API but no
+implementation of it, so the platform package is the price of not hand-rolling
+the process plumbing.
 
 The app requires **Bun**, because OpenTUI binds native code through `bun:ffi`
 and has no Node equivalent. The CLI already detects Node and re-executes itself

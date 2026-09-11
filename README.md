@@ -15,7 +15,9 @@ ytt "https://youtu.be/dQw4w9WgXcQ"       # print the transcript
 npm install -g yt-transcript
 ```
 
-Needs Node 20 or newer. One runtime dependency, `effect`.
+Needs Node 20 or newer. One runtime dependency, `effect`. The app pulls two
+more, `@opentui/core` and `@effect/platform-bun`, and both are optional: the
+plain output path never loads them.
 
 Two commands are installed: `yt-transcript` and the shorter `ytt`.
 
