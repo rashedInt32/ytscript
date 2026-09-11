@@ -20,6 +20,7 @@ import {
   InvalidUrl,
   type TranscriptError
 } from "./Youtube.ts"
+import { DEMO_TRANSCRIPT, isDemoTarget } from "./Demo.ts"
 
 const HELP = `yt-transcript - YouTube transcripts in your terminal. No login, no key.
 
@@ -113,10 +114,13 @@ const positiveInt = (value: string, flag: string): number => {
 
 const listLanguages = (target: string) =>
   Effect.gen(function* () {
-    const videoId = parseVideoId(target)
-    if (videoId === null) return yield* new InvalidUrl({ input: target })
-
-    const info = yield* fetchVideoInfo(videoId)
+    const info = isDemoTarget(target)
+      ? DEMO_TRANSCRIPT
+      : yield* Effect.gen(function* () {
+          const videoId = parseVideoId(target)
+          if (videoId === null) return yield* new InvalidUrl({ input: target })
+          return yield* fetchVideoInfo(videoId)
+        })
     const lines = [`${info.title} - ${info.author}`, ""]
     for (const track of info.tracks) {
       // YouTube already bakes "(auto-generated)" into some track names.

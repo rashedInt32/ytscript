@@ -11,6 +11,7 @@
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import * as Schedule from "effect/Schedule"
+import { DEMO_TRANSCRIPT, isDemoTarget } from "./Demo.ts"
 
 const PLAYER_ENDPOINT =
   "https://www.youtube.com/youtubei/v1/player?prettyPrint=false"
@@ -356,6 +357,10 @@ export const getTranscript = (
   input: string,
   options: GetTranscriptOptions = {}
 ): Effect.Effect<Transcript, TranscriptError> => {
+  // `ytt demo` returns a built-in sample so the whole flow can be exercised
+  // without a network call, which matters when YouTube is throttling you.
+  if (isDemoTarget(input)) return Effect.succeed(DEMO_TRANSCRIPT)
+
   const program = Effect.gen(function* () {
     const videoId = parseVideoId(input)
     if (videoId === null) return yield* new InvalidUrl({ input })

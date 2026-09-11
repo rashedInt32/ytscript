@@ -108,11 +108,15 @@ export const wrap = (text: string, width: number | undefined): string => {
 export const buildHeader = (transcript: Transcript): string => {
   const duration = formatTimestamp(transcript.durationSeconds)
   const kind = transcript.track.isGenerated ? "auto-generated" : "human-written"
-  return [
+  const lines = [
     `# ${transcript.title}`,
-    `Channel: ${transcript.author} | Duration: ${duration} | Captions: ${transcript.track.languageCode} (${kind})`,
-    `Source: https://www.youtube.com/watch?v=${transcript.videoId}`
-  ].join("\n")
+    `Channel: ${transcript.author} | Duration: ${duration} | Captions: ${transcript.track.languageCode} (${kind})`
+  ]
+  // The built-in sample has no YouTube page to point at.
+  if (transcript.client !== "DEMO") {
+    lines.push(`Source: https://www.youtube.com/watch?v=${transcript.videoId}`)
+  }
+  return lines.join("\n")
 }
 
 const formatters: Record<
