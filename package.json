@@ -26,6 +26,7 @@
     "effect"
   ],
   "license": "MIT",
+  "author": "rashed",
   "dependencies": {
     "effect": "4.0.0-rc.113"
   },
@@ -42,6 +43,7 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "dev": "bun run src/bin.ts"
+    "dev": "bun run src/bin.ts",
+    "prepublishOnly": "bun run typecheck && bun test && bun run build"
   }
 }
