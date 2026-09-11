@@ -584,6 +584,16 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     running = null
   }
 
+  /**
+   * Which question the panel belongs to.
+   *
+   * Interruption is not instant: the scope has to kill the child and wait for
+   * it. So a cancelled question is still winding down after its replacement
+   * has started. Without this it would append its last chunks to the new
+   * answer, then clear the new handle and leave a tool running unreachable.
+   */
+  let generation = 0
+
   const runAsk = (prompt: string): void => {
     const active = tool()
     if (active === null || transcript === null) return
@@ -593,12 +603,16 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     answer = ""
     show("ask")
 
+    const mine = ++generation
+    const current = (): boolean => mine === generation
+
     running = runtime.runFork(
       ask({
         tool: active,
         question: prompt,
         transcript: payload(),
         onChunk: (chunk) => {
+          if (!current()) return
           answer += chunk
           paintPanel()
           renderer.requestRender()
@@ -606,6 +620,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
       }).pipe(
         Effect.catch((error) =>
           Effect.sync(() => {
+            if (!current()) return
             const message = explainAsk(error)
             answer = answer === "" ? message : `${answer}\n\n${message}`
           })
@@ -613,6 +628,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
         // Fires on interrupt too, which is what redraws the panel after escape.
         Effect.onExit(() =>
           Effect.sync(() => {
+            if (!current()) return
             running = null
             paintPanel()
             paintBar()
@@ -726,9 +742,13 @@ export const launch = async (initialUrl?: string): Promise<void> => {
         case "q":
           quit()
           break
+        // Guarded like the presets above: while one question is in flight the
+        // only thing the panel accepts is escape.
         case "i":
-          question = ""
-          show("askInput")
+          if (running === null) {
+            question = ""
+            show("askInput")
+          }
           break
         case "m":
           if (tools.length > 0) {
