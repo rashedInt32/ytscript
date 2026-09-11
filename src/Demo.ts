@@ -1,8 +1,8 @@
 /**
  * A built-in sample transcript.
  *
- * `ytt demo` exercises the whole flow — reader, search, timestamps, copy, and
- * the ask-ai panel — without touching YouTube. That matters because the
+ * `yts demo` exercises the whole flow without touching YouTube: reader,
+ * search, timestamps, copy, and the ask-ai panel. That matters because the
  * caption endpoint throttles hard, and being rate limited should never stop
  * you from working on the app itself.
  *
@@ -60,7 +60,7 @@ export const DEMO_TRANSCRIPT: Transcript = {
   videoId: DEMO_ID,
   client: "DEMO",
   title: "Why internal tools die (sample transcript)",
-  author: "yt-transcript demo",
+  author: "ytscript demo",
   durationSeconds: 158,
   tracks: [
     {

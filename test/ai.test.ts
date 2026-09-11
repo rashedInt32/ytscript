@@ -159,7 +159,7 @@ describe("ask", () => {
   test("a tool killed from outside is reported as stopped, not as unstartable", async () => {
     // Only reachable for an external kill. The app's own escape interrupts the
     // fiber, which aborts in the stream and never reads the exit code.
-    const pidFile = join(tmpdir(), `ytt-kill-${process.pid}-${Date.now()}`)
+    const pidFile = join(tmpdir(), `yts-kill-${process.pid}-${Date.now()}`)
     const chunks: Array<string> = []
     const running = runtime.runPromise(
       Effect.result(
@@ -236,7 +236,7 @@ describe("ask", () => {
   test("interrupting kills the child instead of leaving it running", async () => {
     // The child reports its own pid before sleeping, so the kill can be checked
     // rather than inferred from how quickly the interrupt returned.
-    const pidFile = join(tmpdir(), `ytt-ask-${process.pid}-${Date.now()}`)
+    const pidFile = join(tmpdir(), `yts-ask-${process.pid}-${Date.now()}`)
     const started = Date.now()
     const fiber = runtime.runFork(
       ask({

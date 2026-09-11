@@ -1,11 +1,11 @@
 {
-  "name": "yt-transcript",
+  "name": "ytscript",
   "version": "0.1.0",
   "description": "Fetch YouTube transcripts from the terminal. No login, no API key, no subscription.",
   "type": "module",
   "bin": {
-    "yt-transcript": "dist/bin.js",
-    "ytt": "dist/bin.js"
+    "ytscript": "dist/bin.js",
+    "yts": "dist/bin.js"
   },
   "files": [
     "dist",

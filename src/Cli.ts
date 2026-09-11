@@ -24,11 +24,11 @@ import {
 } from "./Youtube.ts"
 import { DEMO_TRANSCRIPT, isDemoTarget } from "./Demo.ts"
 
-const HELP = `yt-transcript - YouTube transcripts in your terminal. No login, no key.
+const HELP = `ytscript - YouTube transcripts in your terminal. No login, no key.
 
 USAGE
-  ytt                          Open the interactive app
-  ytt <url|id> [options]       Print the transcript
+  yts                          Open the interactive app
+  yts <url|id> [options]       Print the transcript
 
 OPTIONS
   -l, --lang <code>       Caption language, e.g. en, es, ja
@@ -48,13 +48,13 @@ OPTIONS
   -v, --version           Show version
 
 PIPE IT INTO AN AI CLI
-  yt-transcript <url> | claude -p "Summarise the key arguments"
-  yt-transcript <url> -p "Extract every action item" | claude
-  yt-transcript <url> -f ts | llm "When do they discuss pricing?"
+  yts <url> | claude -p "Summarise the key arguments"
+  yts <url> -p "Extract every action item" | claude
+  yts <url> -f ts | llm "When do they discuss pricing?"
 
 COPY IT BY HAND
-  yt-transcript <url> -c
-  yt-transcript <url> -c -p "Summarise this talk in five bullets"
+  yts <url> -c
+  yts <url> -c -p "Summarise this talk in five bullets"
 
 Exit codes: 0 ok, 1 error, 2 bad usage.`
 
@@ -151,7 +151,7 @@ const launchApp = async (url: string | undefined): Promise<number> => {
           "code through bun:ffi and has no Node equivalent yet.\n\n" +
           "  curl -fsSL https://bun.sh/install | bash\n\n" +
           "Everything else works on Node. Pass a URL for plain output:\n" +
-          "  ytt https://youtu.be/VIDEO\n"
+          "  yts https://youtu.be/VIDEO\n"
       )
       return 1
     }
@@ -235,7 +235,7 @@ export const run = async (argv: ReadonlyArray<string>): Promise<number> => {
 
   const target = positionals[0]
 
-  // Bare `ytt` opens the app. Piping without a URL has nothing to print, so
+  // Bare `yts` opens the app. Piping without a URL has nothing to print, so
   // that stays an error rather than launching a TUI into a pipe.
   if (target === undefined) {
     if (!process.stdout.isTTY) {

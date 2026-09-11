@@ -1,7 +1,7 @@
 /**
  * The interactive app.
  *
- * Running `ytt` with no URL lands here. Piping (`ytt <url> | claude`) never
+ * Running `yts` with no URL lands here. Piping (`yts <url> | claude`) never
  * loads this module at all, so the fast path pays nothing for it.
  *
  * Screens: a home screen with a URL field, and a reader for the transcript.
@@ -85,7 +85,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
       "The interactive app needs @opentui/core.\n" +
         "It requires Bun, because its renderer binds native code through bun:ffi.\n" +
         "Pass a URL to use the plain output instead:\n" +
-        "  ytt https://youtu.be/VIDEO"
+        "  yts https://youtu.be/VIDEO"
     )
   }
 

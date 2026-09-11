@@ -357,7 +357,7 @@ export const getTranscript = (
   input: string,
   options: GetTranscriptOptions = {}
 ): Effect.Effect<Transcript, TranscriptError> => {
-  // `ytt demo` returns a built-in sample so the whole flow can be exercised
+  // `yts demo` returns a built-in sample so the whole flow can be exercised
   // without a network call, which matters when YouTube is throttling you.
   if (isDemoTarget(input)) return Effect.succeed(DEMO_TRANSCRIPT)
 

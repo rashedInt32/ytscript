@@ -1,57 +1,57 @@
-# yt-transcript
+# ytscript
 
 YouTube transcripts in your terminal. No login, no API key, no subscription, no proxy.
 
 Output is shaped for pasting into Claude Code, `llm`, or any other AI CLI.
 
 ```bash
-ytt                                      # open the app
-ytt "https://youtu.be/dQw4w9WgXcQ"       # print the transcript
+yts                                      # open the app
+yts "https://youtu.be/dQw4w9WgXcQ"       # print the transcript
 ```
 
 ## Install
 
 ```bash
-npm install -g yt-transcript
+npm install -g ytscript
 ```
 
 You need Node 20 or newer. There is one runtime dependency, `effect`. The app
 adds two more, `@opentui/core` and `@effect/platform-bun`, and both are
 optional, so the plain output path never loads them.
 
-Two commands are installed: `yt-transcript` and the shorter `ytt`.
+Two commands are installed: `ytscript` and the shorter `yts`.
 
 ## Feed it to an AI
 
 Piping is the fastest route. The transcript goes to stdout, and nothing else does, so pipes stay clean.
 
 ```bash
-ytt "https://youtu.be/VIDEO" | claude -p "Summarise the key arguments"
-ytt "https://youtu.be/VIDEO" -p "Extract every action item" | claude
-ytt "https://youtu.be/VIDEO" -f ts | llm "When do they discuss pricing?"
+yts "https://youtu.be/VIDEO" | claude -p "Summarise the key arguments"
+yts "https://youtu.be/VIDEO" -p "Extract every action item" | claude
+yts "https://youtu.be/VIDEO" -f ts | llm "When do they discuss pricing?"
 ```
 
 If you would rather paste by hand, put it straight on the clipboard:
 
 ```bash
-ytt "https://youtu.be/VIDEO" -c
-ytt "https://youtu.be/VIDEO" -c -p "Summarise this talk in five bullets"
+yts "https://youtu.be/VIDEO" -c
+yts "https://youtu.be/VIDEO" -c -p "Summarise this talk in five bullets"
 ```
 
 For a model with a small context window, split it up first:
 
 ```bash
-ytt "https://youtu.be/VIDEO" --chunk 8000
+yts "https://youtu.be/VIDEO" --chunk 8000
 ```
 
 Every part is labelled `--- part 1 of 3 ---`, so you can paste them in order.
 
 ## The app
 
-Run `ytt` with no arguments and it opens a full-screen app: a field to paste a URL into, and a reader for the result.
+Run `yts` with no arguments and it opens a full-screen app: a field to paste a URL into, and a reader for the result.
 
 ```bash
-ytt
+yts
 ```
 
 ```
@@ -68,12 +68,12 @@ ytt
 
 In the reader: `/` searches, `y` copies what is on screen, `t` toggles timestamps, `a` opens the ask-ai panel, `esc` goes back for another URL, `q` quits. Searching narrows to matching paragraphs, and `y` then copies only those. The header keeps a live token count so you know the size of what you are about to paste.
 
-`ytt <url> -i` skips the home screen and goes straight to the reader.
+`yts <url> -i` skips the home screen and goes straight to the reader.
 
 ## Try it without a network call
 
 ```bash
-ytt demo
+yts demo
 ```
 
 `demo` returns a built-in sample transcript. Everything works on it without a single request to YouTube. Formats, search, the reader, the ask-ai panel, all of it. Handy when you are rate limited, offline, or changing the app itself. It works inside the app too, so you can type `demo` into the URL field.
@@ -99,7 +99,7 @@ Press `a` in the reader and a panel slides in from the right.
 
 It finds whatever AI CLI you already have and shells out to it. Searched in order: `claude`, `codex`, `qwen`, `gemini`, `opencode`, `llm`. Press `m` to cycle between the ones you have installed.
 
-No API keys are stored or asked for. The tool runs the CLI exactly as you have already configured and authenticated it, which is the same principle as the rest of `yt-transcript`.
+No API keys are stored or asked for. The tool runs the CLI exactly as you have already configured and authenticated it, which is the same principle as the rest of `ytscript`.
 
 Four presets are one keypress each: `s` summarise, `k` key points, `a` action items, `c` chapters with timestamps. Press `i` to type any question instead.
 
@@ -113,9 +113,9 @@ Answers stream in as they are generated where the CLI supports it. Claude does, 
 
 OpenTUI's renderer is native code bound through `bun:ffi`. There is no Node equivalent yet, so under Node it fails with "OpenTUI native FFI is not available for this runtime yet", regardless of what its `engines` field claims.
 
-`ytt` handles this for you: if it is running under Node and finds `bun` on your PATH, it re-runs itself under Bun. You only need to care if Bun is not installed, in which case the app tells you so and everything else keeps working.
+`yts` handles this for you: if it is running under Node and finds `bun` on your PATH, it re-runs itself under Bun. You only need to care if Bun is not installed, in which case the app tells you so and everything else keeps working.
 
-Only the app is affected. `ytt <url>` and every flag below run on plain Node.
+Only the app is affected. `yts <url>` and every flag below run on plain Node.
 
 ## Why the default output looks the way it does
 
