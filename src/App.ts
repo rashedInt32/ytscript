@@ -96,6 +96,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     StyledText,
     bold,
     createCliRenderer,
+    dim,
     fg
   } = tui
 
@@ -125,13 +126,29 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     keyName: string,
     label: string,
     paint: Paint,
-    width = 0
+    width = 0,
+    muted = false
   ): Array<TextChunk> => {
     const gap = Math.max(1, width - keyName.length - label.length - 1)
+    const text = ` ${label}`
     // Bold as well as coloured: on a single character, colour alone is a weak
     // signal, and it is the only signal for anyone who cannot separate hues.
-    return [bold(paint(keyName)), inText(` ${label}`), inDim(" ".repeat(gap))]
+    return [
+      bold(paint(keyName)),
+      muted ? dim(inText(text)) : inText(text),
+      inDim(" ".repeat(gap))
+    ]
   }
+
+  /**
+   * Bar variant. The hint bar is always on screen, so its labels recede.
+   *
+   * This uses the terminal's faint attribute over the default foreground
+   * rather than a fixed grey, so "slightly dimmer than body text" stays true
+   * whatever theme is running. A hardcoded grey can only be right for one.
+   */
+  const hint = (keyName: string, label: string, paint: Paint): Array<TextChunk> =>
+    pair(keyName, label, paint, 0, true)
 
   const styled = (...chunks: Array<TextChunk>): StyledTextType =>
     new StyledText(chunks)
@@ -374,7 +391,7 @@ export const launch = async (initialUrl?: string): Promise<void> => {
     const lead = inDim("  ")
     switch (mode) {
       case "home":
-        return [lead, ...pair("enter", "fetch", inOk), inDim("   "), ...pair("^c", "quit", inDanger)]
+        return [lead, ...hint("enter", "fetch", inOk), inDim("   "), ...hint("^c", "quit", inDanger)]
       case "loading":
         return [lead, inDim("fetching…")]
       case "search":
@@ -382,9 +399,9 @@ export const launch = async (initialUrl?: string): Promise<void> => {
           lead,
           inNav(`/${query}█`),
           inDim("   "),
-          ...pair("enter", "apply", inOk),
+          ...hint("enter", "apply", inOk),
           inDim("  "),
-          ...pair("esc", "clear", inDanger)
+          ...hint("esc", "clear", inDanger)
         ]
       case "askInput":
         return [
@@ -392,37 +409,37 @@ export const launch = async (initialUrl?: string): Promise<void> => {
           inDim("ask: "),
           inBrand(`${question}█`),
           inDim("   "),
-          ...pair("enter", "send", inOk),
+          ...hint("enter", "send", inOk),
           inDim("  "),
-          ...pair("esc", "cancel", inDanger)
+          ...hint("esc", "cancel", inDanger)
         ]
       case "ask":
         return running !== null
-          ? [lead, inBrand("thinking…"), inDim("   "), ...pair("esc", "stop", inDanger)]
+          ? [lead, inBrand("thinking…"), inDim("   "), ...hint("esc", "stop", inDanger)]
           : [
               lead,
-              ...pair("tab", "transcript", inNav),
+              ...hint("tab", "transcript", inNav),
               inDim("  "),
-              ...pair("y", "copy answer", inOk),
+              ...hint("y", "copy answer", inOk),
               inDim("  "),
-              ...pair("esc", "close", inDanger),
+              ...hint("esc", "close", inDanger),
               inDim("  "),
-              ...pair("q", "quit", inDanger)
+              ...hint("q", "quit", inDanger)
             ]
       default:
         return [
           lead,
-          ...pair("/", "search", inNav),
+          ...hint("/", "search", inNav),
           inDim("  "),
-          ...pair("a", "ask ai", inBrand),
+          ...hint("a", "ask ai", inBrand),
           inDim("  "),
-          ...pair("y", "copy", inOk),
+          ...hint("y", "copy", inOk),
           inDim("  "),
-          ...pair("t", "times", inOption),
+          ...hint("t", "times", inOption),
           inDim("  "),
-          ...pair("esc", "new url", inDanger),
+          ...hint("esc", "new url", inDanger),
           inDim("  "),
-          ...pair("q", "quit", inDanger)
+          ...hint("q", "quit", inDanger)
         ]
     }
   }
