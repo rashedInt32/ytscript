@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process"
+import { spawn, spawnSync } from "node:child_process"
 import { createRequire } from "node:module"
 import { writeFile } from "node:fs/promises"
 import { parseArgs } from "node:util"
@@ -25,8 +25,8 @@ import { DEMO_TRANSCRIPT, isDemoTarget } from "./Demo.ts"
 const HELP = `yt-transcript - YouTube transcripts in your terminal. No login, no key.
 
 USAGE
-  yt-transcript <url|id> [options]
-  ytt <url|id> [options]
+  ytt                          Open the interactive app
+  ytt <url|id> [options]       Print the transcript
 
 OPTIONS
   -l, --lang <code>       Caption language, e.g. en, es, ja
@@ -35,6 +35,7 @@ OPTIONS
   -c, --copy              Copy to clipboard instead of printing
   -o, --out <file>        Write to a file
   -p, --prompt <text>     Prepend an instruction line, for piping into an AI CLI
+  -i, --interactive       Open this URL straight in the app
       --chunk <tokens>    Split output into parts of roughly this many tokens
       --wrap <cols>       Hard-wrap prose at this width   (default: off)
       --raw               Omit the title and channel header
@@ -62,6 +63,7 @@ const OPTIONS = {
   copy: { type: "boolean", short: "c", default: false },
   out: { type: "string", short: "o" },
   prompt: { type: "string", short: "p" },
+  interactive: { type: "boolean", short: "i", default: false },
   chunk: { type: "string" },
   wrap: { type: "string" },
   raw: { type: "boolean", default: false },
@@ -102,6 +104,48 @@ const copyToClipboard = (text: string): Promise<void> => {
     }
     attempt(0)
   })
+}
+
+/**
+ * Opens the interactive app.
+ *
+ * OpenTUI's renderer is a native library bound through `bun:ffi`, so it only
+ * runs under Bun despite what its `engines` field claims. Node gets
+ * "OpenTUI native FFI is not available for this runtime yet". Rather than
+ * making that the user's problem, hand the same command to Bun when we find
+ * it. The plain output path is unaffected and still runs anywhere.
+ */
+const launchApp = async (url: string | undefined): Promise<number> => {
+  if (process.versions.bun === undefined) {
+    const bun = spawnSync("command", ["-v", "bun"], { shell: true, encoding: "utf8" })
+    const bunPath = bun.stdout?.trim()
+    if (bunPath === undefined || bunPath === "") {
+      process.stderr.write(
+        "The interactive app needs Bun, because OpenTUI's renderer binds native\n" +
+          "code through bun:ffi and has no Node equivalent yet.\n\n" +
+          "  curl -fsSL https://bun.sh/install | bash\n\n" +
+          "Everything else works on Node. Pass a URL for plain output:\n" +
+          "  ytt https://youtu.be/VIDEO\n"
+      )
+      return 1
+    }
+    const entry = process.argv[1]
+    if (entry === undefined) return 1
+    const relaunch = spawnSync(bunPath, [entry, ...process.argv.slice(2)], {
+      stdio: "inherit"
+    })
+    return relaunch.status ?? 0
+  }
+
+  try {
+    // Imported lazily so the plain output path never loads the renderer.
+    const { launch } = await import("./App.ts")
+    await launch(url)
+    return 0
+  } catch (error) {
+    process.stderr.write(`${(error as Error).message}\n`)
+    return 1
+  }
 }
 
 const positiveInt = (value: string, flag: string): number => {
@@ -164,10 +208,18 @@ export const run = async (argv: ReadonlyArray<string>): Promise<number> => {
   }
 
   const target = positionals[0]
+
+  // Bare `ytt` opens the app. Piping without a URL has nothing to print, so
+  // that stays an error rather than launching a TUI into a pipe.
   if (target === undefined) {
-    process.stderr.write("Missing a YouTube URL or video id.\n\nRun with --help.\n")
-    return 2
+    if (!process.stdout.isTTY) {
+      process.stderr.write("Missing a YouTube URL or video id.\n\nRun with --help.\n")
+      return 2
+    }
+    return await launchApp(undefined)
   }
+
+  if (values.interactive === true) return await launchApp(target)
 
   const formatName = String(values.format ?? "text")
   if (!isFormatName(formatName)) {
